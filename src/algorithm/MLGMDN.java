@@ -561,7 +561,7 @@ public class MLGMDN {
 			} // of for j
 		} // of for k
 
-		tempC = tool.MatrixOpr.Matrix_DotDiv(tempC, tempW);// tempC = 0
+		tempC = tool.MatrixOpr.matrixDotDivision(tempC, tempW);// tempC = 0
 
 		// Step 2. Compute Inx - C and sqrt(W)
 		for (int i = 0; i < numUsers; i++) {

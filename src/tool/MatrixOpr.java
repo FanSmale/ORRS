@@ -82,18 +82,19 @@ public class MatrixOpr {
 		return tempResultVector;
 	}// of Vector_DotMult
 
-	public static double[][] Matrix_DotDiv(double[][] paraU, double[][] paraV) {
-		double[][] tempResultVector = new double[paraU.length][paraU[0].length];
-		if (paraU.length == paraV.length && paraU[0].length == paraV[0].length) {
-			for (int i = 0; i < paraU.length; i++) {
-				for (int j = 0; j < paraU[0].length; j++) {
-					if (paraV[i][j] != 0) {
-						tempResultVector[i][j] = paraU[i][j] / paraV[i][j];
-					} // of if
-				} // of for j
-			} // of for i
-		} // of if
-		return tempResultVector;
+	public static double[][] matrixDotDivision(double[][] paraU, double[][] paraV) {
+		double[][] resultVector = new double[paraU.length][];
+	
+		for (int i = 0; i < paraU.length; i++) {
+			resultVector[i] = new double[paraU[i].length];
+			for (int j = 0; j < paraU[i].length; j++) {
+				if (paraV[i][j] != 0) {
+					resultVector[i][j] = paraU[i][j] / paraV[i][j];
+				} // Of if
+			} // Of for j
+		} // of for i
+
+		return resultVector;
 	}// of Vector_DotDiv
 
 	public static double[] Vector_DotDiv(double[] paraU, double[] paraV) {

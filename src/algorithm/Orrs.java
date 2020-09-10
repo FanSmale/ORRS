@@ -13,16 +13,20 @@
  * Output: predictions R''
  */
 package algorithm;
+
 import java.io.*;
+
+import common.Common;
 
 //import Jama.*;
 import datamodel.DataInfor;
 import datamodel.RatingSystem2DBoolean;
 //import datamodel.NoiseInfo;
 import tool.*;
+
 //import tool.SimpleTool;
 
-public class Orrs extends MF2DBoolean{
+public class Orrs extends MF2DBoolean {
 	/**
 	 * The number of non-zero elements in the training set.
 	 */
@@ -60,7 +64,8 @@ public class Orrs extends MF2DBoolean{
 	double[] trainingErrors;
 
 	/**
-	 * Help computing noiseDistribution. The size is the same as noiseDistribution.
+	 * Help computing noiseDistribution. The size is the same as
+	 * noiseDistribution.
 	 */
 	// public double[][] logRho;
 	double[][] logRho;
@@ -96,8 +101,8 @@ public class Orrs extends MF2DBoolean{
 	double[][] sqrtW;
 
 	/**
-	 * The noise distribution along the training set. The number of columns is the
-	 * number of noise.
+	 * The noise distribution along the training set. The number of columns is
+	 * the number of noise.
 	 */
 	public double[][] noiseDistribution;
 
@@ -124,7 +129,7 @@ public class Orrs extends MF2DBoolean{
 	public Orrs(RatingSystem2DBoolean paraDataset, int paraNumNoise) {
 		super(paraDataset);
 		numNoise = paraNumNoise;
-	}//Of the first constructor
+	}// Of the first constructor
 
 	/**
 	 ***********************
@@ -138,13 +143,25 @@ public class Orrs extends MF2DBoolean{
 		numUsers = dataset.getNumUsers();
 		numItems = dataset.getNumItems();
 
-		//numTrainSize = dataset.getTrainingSize();
+		// numTrainSize = dataset.getTrainingSize();
 
 		// Share the same space of dataset.
-		//noiseDistribution = dataset.getNoiseDistribution();
+		// noiseDistribution = dataset.getNoiseDistribution();
 		mu = new double[numNoise];
 		sigma = new double[numNoise];
+
+		// Initialize noise distribution and noise weight
+		noiseDistribution = new double[numTrainSize][numNoise];
 		noiseWeight = new double[numNoise];
+		int tempIndex = 0;
+		for (int i = 0; i < numTrainSize; i++) {
+			tempIndex = Common.random.nextInt(numNoise);
+			noiseDistribution[i][tempIndex] = 1;
+			noiseWeight[tempIndex]++;
+		}// Of for i
+		for (int i = 0; i < numNoise; i++) {
+			noiseWeight[i] /= numTrainSize;
+		}// Of for i
 
 		trainingErrors = new double[numTrainSize];
 		logLikelihood = 0;
@@ -157,7 +174,6 @@ public class Orrs extends MF2DBoolean{
 			sigma[i] = Math.random();
 			System.out.println("sigma" + i + ":" + sigma[i]);
 			mu[i] = 0;
-			noiseWeight[i] = dataset.noiseWeight[i];
 			// System.out.printf("sigma %d: %f\r\n", i,sigma[i]);
 		} // of for i
 
@@ -166,35 +182,55 @@ public class Orrs extends MF2DBoolean{
 
 	/**
 	 ***********************
-	 * Compute the error on non-zero points of the training set. Note that the error
-	 * can be either positive or negative.
+	 * Compute the error on non-zero points of the training set. Note that the
+	 * error can be either positive or negative.
+	 * 
+	 * @return the train errors in an array with size of the training set.
+	 ***********************
+	 *         public double[] computeNonZeroError() { double[][] tempX =
+	 *         MatrixOpr.Matrix_Mult(userSubspace, itemSubspace); int tempCount
+	 *         = 0;
+	 * 
+	 *         for (int i = 0; i < numUsers; i++) { for (int j = 0; j <
+	 *         numItems; j++) { if (dataset.nonZeroTrainIndexMatrix[i][j] != 0)
+	 *         { trainingErrors[tempCount] = dataset.trainMatrix[i][j] -
+	 *         tempX[i][j]; tempCount++; } // of if } // of for j } // of for i
+	 * 
+	 *         // System.out.println("The length of trainingErrors: " + //
+	 *         trainingErrors.length); return trainingErrors; }// of
+	 *         computeNonZeroError
+	 */
+
+	/**
+	 ***********************
+	 * Compute the error on the training set. Note that the error can be either
+	 * positive or negative.
 	 * 
 	 * @return the train errors in an array with size of the training set.
 	 ***********************
 	 */
-	public double[] computeNonZeroError() {
-		double[][] tempX = MatrixOpr.Matrix_Mult(userSubspace, itemSubspace);
-		int tempCount = 0;
-
+	public double[] computeTrainingError() {
+		int tempIndex = 0;
+		int tempItemIndex = 0;
 		for (int i = 0; i < numUsers; i++) {
-			for (int j = 0; j < numItems; j++) {
-				if (dataset.nonZeroTrainIndexMatrix[i][j] != 0) {
-					trainingErrors[tempCount] = dataset.trainMatrix[i][j] - tempX[i][j];
-					tempCount++;
-				} // of if
-			} // of for j
-		} // of for i
+			for (int j = 0; j < dataset.getUserNumRatings(i); j++) {
+				if (dataset.getTrainIndication(i, j)) {
+					tempItemIndex = dataset.getTriple(i, j).item;
+					trainingErrors[tempIndex] = dataset.getTriple(i, j).rating
+							- predict(i, tempItemIndex);
+					tempIndex++;
+				}// Of if
+			}// Of for i
+		}// Of for i
 
-		// System.out.println("The length of trainingErrors: " +
-		// trainingErrors.length);
 		return trainingErrors;
-	}// of computeNonZeroError
+	}// Of computeTrainingError
 
 	/**
 	 ***********************
-	 * The E step of the EM algorithm. Compute the expected noise for each dataset
-	 * point Recompute logRho, noiseDistribution and logLikelihood. Update the
-	 * noiseDistribution
+	 * The E step of the EM algorithm. Compute the expected noise for each
+	 * dataset point Recompute logRho, noiseDistribution and logLikelihood.
+	 * Update the noiseDistribution
 	 * 
 	 * @return noiseDistribution
 	 ***********************
@@ -268,7 +304,8 @@ public class Orrs extends MF2DBoolean{
 		double templlh2;
 
 		// subU and subV are already initialized
-		computeNonZeroError();
+		// computeNonZeroError();
+		computeTrainingError();
 
 		// SimpleTool.printDoubleArray(tempEm.trainingErrors);
 		expectation();
@@ -295,7 +332,8 @@ public class Orrs extends MF2DBoolean{
 			maximizationW();
 
 			// Prepare for the noise part
-			computeNonZeroError();
+			// computeNonZeroError();
+			computeTrainingError();
 			// ******* M Step 2************
 
 			// ******* E Step 2************
@@ -304,7 +342,8 @@ public class Orrs extends MF2DBoolean{
 			llh[tempIterations] = logLikelihood;
 
 			// ******* E Step 2************
-			if (llh[tempIterations] - llh[tempIterations - 1] < tolerance * Math.abs(llh[tempIterations])) {
+			if (llh[tempIterations] - llh[tempIterations - 1] < tolerance
+					* Math.abs(llh[tempIterations])) {
 				converged = true;
 			} // Of if
 		} // of while
@@ -314,10 +353,10 @@ public class Orrs extends MF2DBoolean{
 	/**
 	 ***********************
 	 * Compute logsumexp using logRho.<br>
-	 * Suppose that k = 3 and \log a_2 is the maximal value among {\log a_1, \log
-	 * a_2, \log a_3} $\log (a_1 + a_2 + a3) = \log(e^{\log a_1 - \log a_2} + e^0$ $
-	 * + e^{\log a_3 - \log a_2}) + \log a_2$ The purpose is to avoid computing
-	 * $a_1$, $a_2$, and $a_3$ which may overflow (too close to 0).
+	 * Suppose that k = 3 and \log a_2 is the maximal value among {\log a_1,
+	 * \log a_2, \log a_3} $\log (a_1 + a_2 + a3) = \log(e^{\log a_1 - \log a_2}
+	 * + e^0$ $ + e^{\log a_3 - \log a_2}) + \log a_2$ The purpose is to avoid
+	 * computing $a_1$, $a_2$, and $a_3$ which may overflow (too close to 0).
 	 * 
 	 * @return logsumexp Each element of the vector is obtained using one row of
 	 *         logRho
@@ -325,8 +364,8 @@ public class Orrs extends MF2DBoolean{
 	 */
 	public double[] computeLogSumExp() {
 		/*
-		 * Step 1. y = max(x,[],dim) Compute the max value of every row in Matrix
-		 * logRho.
+		 * Step 1. y = max(x,[],dim) Compute the max value of every row in
+		 * Matrix logRho.
 		 */
 		double[][] tempXX = new double[logRho.length][logRho[0].length];
 		double[] tempRowMax = new double[logRho.length];
@@ -379,15 +418,16 @@ public class Orrs extends MF2DBoolean{
 
 	/**
 	 * logGaussPdf is to compute ln(gauss probability funtion), and divided into
-	 * three parts. Part1: from Step1 to Step4 Part2 and Part3: Step5 Compute the
-	 * log of probability density function x -> ln f(x)
+	 * three parts. Part1: from Step1 to Step4 Part2 and Part3: Step5 Compute
+	 * the log of probability density function x -> ln f(x)
 	 * 
 	 * @param paraError
 	 *            each element represents the error
 	 * 
 	 * @return the probability density of each error.
 	 */
-	public double[] logGaussPdf(double[] paraErrors, double paraMu, double paraSigma) {
+	public double[] logGaussPdf(double[] paraErrors, double paraMu,
+			double paraSigma) {
 
 		double sigma_Decomp;
 		// Make a copy to avoid changing the vector
@@ -403,8 +443,8 @@ public class Orrs extends MF2DBoolean{
 		} // of for i
 
 		/*
-		 * Step 2: CholeskyDecomposition of paraSigma. For convenience, employ "sqrt"
-		 * instead of it. [U,p] = chol(Sigma);
+		 * Step 2: CholeskyDecomposition of paraSigma. For convenience, employ
+		 * "sqrt" instead of it. [U,p] = chol(Sigma);
 		 */
 		sigma_Decomp = Math.sqrt(paraSigma);
 
@@ -456,8 +496,8 @@ public class Orrs extends MF2DBoolean{
 		double[] tempsqrtR = new double[numTrainSize];
 		// R = noiseDistribution;
 		/*
-		 * Step 1. Recompute noiseWeight nk = sum(R,1); w = nk/size(R,1); Sigma =
-		 * zeros(1,k); sqrtR = sqrt(R);
+		 * Step 1. Recompute noiseWeight nk = sum(R,1); w = nk/size(R,1); Sigma
+		 * = zeros(1,k); sqrtR = sqrt(R);
 		 */
 		tempSum = tool.MatrixOpr.SumbyCol(noiseDistribution);
 
@@ -492,8 +532,13 @@ public class Orrs extends MF2DBoolean{
 	 ***********************
 	 */
 	public void maximizationW() {
-		double[][] tempW = new double[numUsers][numItems];
-		double[][] tempC = new double[numUsers][numItems];
+		double[][] tempW = new double[numUsers][];
+		double[][] tempC = new double[numUsers][];
+		for (int i = 0; i < numUsers; i++) {
+			tempW[i] = new double[dataset.getUserNumRatings(i)];
+			tempC[i] = new double[dataset.getUserNumRatings(i)];
+		}//Of for i
+		
 		// double[][] R;
 		// double[] tempMu;
 		// double[] tempSigma;
@@ -503,38 +548,45 @@ public class Orrs extends MF2DBoolean{
 		// tempSigma = sigma;
 
 		/*
-		 * Step 1. for j = 1:k W(IND) = W(IND) + R(:,j)/(2*Sigma(j)); C(IND) = C(IND) +
-		 * R(:,j)*mu(j)/(2*Sigma(j)); end
+		 * Step 1. for j = 1:k W(IND) = W(IND) + R(:,j)/(2*Sigma(j)); C(IND) =
+		 * C(IND) + R(:,j)*mu(j)/(2*Sigma(j)); end
 		 */
 		for (int k = 0; k < noiseDistribution[0].length; k++) {
-			int tempCnt = 0;
+			int tempIndex = 0;
 			for (int i = 0; i < numUsers; i++) {
-				for (int j = 0; j < numItems; j++) {
-					if (dataset.nonZeroTrainIndexMatrix[i][j] != 0 && sigma[k] != 0) {
-						tempW[i][j] += noiseDistribution[tempCnt][k] / (2 * sigma[k]);
-						tempC[i][j] += noiseDistribution[tempCnt][k] * mu[k] / (2 * sigma[k]);// always equal to zero
-						tempCnt++;
+				for (int j = 0; j < dataset.getUserNumRatings(i); j++) {
+					if (dataset.getTrainIndication(i, j) && sigma[k] != 0) {
+						tempW[i][j] += noiseDistribution[tempIndex][k]
+								/ (2 * sigma[k]);
+						tempC[i][j] += noiseDistribution[tempIndex][k] * mu[k]
+								/ (2 * sigma[k]);// always equal to zero
+						tempIndex++;
 					} // of if
 				} // of for i
 			} // of for j
 		} // of for k
 
-		tempC = tool.MatrixOpr.Matrix_DotDiv(tempC, tempW);// tempC = 0
+		tempC = tool.MatrixOpr.matrixDotDivision(tempC, tempW);// tempC = 0
 
 		// Step 2. Compute Inx - C and sqrt(W)
 		for (int i = 0; i < numUsers; i++) {
-			for (int j = 0; j < numItems; j++) {
-				efficientPara1[i][j] = dataset.trainMatrix[i][j] - tempC[i][j];
-				sqrtW[i][j] = Math.sqrt(tempW[i][j]);// sqrtW
-			} // of for j
-		} // of for i
+			for (int j = 0; j < dataset.getUserNumRatings(i); j++) {
+				if (dataset.getTrainIndication(i, j)) {
+					//tempItemIndex = dataset.getTriple(i, j).item;
+				
+					efficientPara1[i][j] = dataset.getTriple(i, j).rating - tempC[i][j];
+					sqrtW[i][j] = Math.sqrt(tempW[i][j]);// sqrtW
+				} // Of if
+			} // Of for j
+		} // Of for i
 
 		EfficientMCL2();
 	}// of MaximazationW
 
 	/**
 	 ***********************
-	 * A main algorithm. The low rank matrices are updated decompIterTimes times.
+	 * A main algorithm. The low rank matrices are updated decompIterTimes
+	 * times.
 	 ***********************
 	 */
 	public void EfficientMCL2() {
@@ -594,10 +646,12 @@ public class Orrs extends MF2DBoolean{
 				paraColVec = tempOutU_transp[tempColInd];
 				paraRowVec = tempOutV_transp[tempColInd];
 
-				tempPart = tool.MatrixOpr.ColVec_Multi_RowVec(paraColVec, paraRowVec);// 943*1682
+				tempPart = tool.MatrixOpr.ColVec_Multi_RowVec(paraColVec,
+						paraRowVec);// 943*1682
 				for (int tempi = 0; tempi < tempRegul.length; tempi++) {
 					for (int tempj = 0; tempj < tempRegul[0].length; tempj++) {
-						tempRegul[tempi][tempj] = efficientPara1[tempi][tempj] - tempMulti[tempi][tempj]
+						tempRegul[tempi][tempj] = efficientPara1[tempi][tempj]
+								- tempMulti[tempi][tempj]
 								+ tempPart[tempi][tempj];
 					} // of for tempj
 				} // of for tempi
@@ -608,8 +662,8 @@ public class Orrs extends MF2DBoolean{
 				tempsqrtW_transp = tool.MatrixOpr.Matrix_Transpose(sqrtW);// 20*40
 
 				/*
-				 * Step 2. u = InU(:,j); OutV(:,j) = optimMCL2(TX,W,u) OutU(:,j) =
-				 * optimMCL2(TX',W',OutV(:,j))
+				 * Step 2. u = InU(:,j); OutV(:,j) = optimMCL2(TX,W,u) OutU(:,j)
+				 * = optimMCL2(TX',W',OutV(:,j))
 				 */
 				// System.out.printf("Iteration time: %d,tempColInd:%d\r\n",
 				// i,tempColInd);
@@ -618,13 +672,14 @@ public class Orrs extends MF2DBoolean{
 
 				paraSubV_transp = tool.MatrixOpr.Matrix_Transpose(paraSubV);// 4*20
 
-				tempOutV_transp[tempColInd] = optimMCL2(tempRegul, sqrtW, paraSubU_transp[tempColInd]);
+				tempOutV_transp[tempColInd] = optimMCL2(tempRegul, sqrtW,
+						paraSubU_transp[tempColInd]);
 				// System.out.println("tempColInd:"+tempColInd);
 				// System.out.println("**************tempOutV_transp************");
 				// printMatrix(tempOutV_transp);
 
-				tempOutU_transp[tempColInd] = optimMCL2(tempRegul_transp, tempsqrtW_transp,
-						tempOutV_transp[tempColInd]);
+				tempOutU_transp[tempColInd] = optimMCL2(tempRegul_transp,
+						tempsqrtW_transp, tempOutV_transp[tempColInd]);
 				// System.out.println("**************tempOutU_transp************");
 				// printMatrix(tempOutU_transp);
 
@@ -649,11 +704,14 @@ public class Orrs extends MF2DBoolean{
 		} // of for i
 
 		/*
-		 * Step 4. Nu = sqrt(sum(OutU.^2))'; Nv = sqrt(sum(OutV.^2))'; No =diag(Nu.*Nv);
-		 * OutU = OutU*diag(1./Nu)*sqrt(No); OutV = OutV*diag(1./Nv)*sqrt(No);
+		 * Step 4. Nu = sqrt(sum(OutU.^2))'; Nv = sqrt(sum(OutV.^2))'; No
+		 * =diag(Nu.*Nv); OutU = OutU*diag(1./Nu)*sqrt(No); OutV =
+		 * OutV*diag(1./Nv)*sqrt(No);
 		 */
-		tempVector1 = tool.MatrixOpr.SumbyCol(tool.MatrixOpr.Matrix_DotMult(tempOutU, tempOutU));// 1*4
-		tempVector2 = tool.MatrixOpr.SumbyCol(tool.MatrixOpr.Matrix_DotMult(tempOutV, tempOutV));// 1*4
+		tempVector1 = tool.MatrixOpr.SumbyCol(tool.MatrixOpr.Matrix_DotMult(
+				tempOutU, tempOutU));// 1*4
+		tempVector2 = tool.MatrixOpr.SumbyCol(tool.MatrixOpr.Matrix_DotMult(
+				tempOutV, tempOutV));// 1*4
 		for (int i = 0; i < tempVector1.length; i++) {
 			tempVector1[i] = Math.sqrt(tempVector1[i]);
 			tempVector2[i] = Math.sqrt(tempVector2[i]);
@@ -666,8 +724,10 @@ public class Orrs extends MF2DBoolean{
 			tempDiag_V[i][i] = 1.0 / tempVector2[i];// diag(1./Nv)
 		} // of for i
 
-		tempOutU = tool.MatrixOpr.Matrix_Mult(tempOutU, tool.MatrixOpr.Matrix_Mult(tempDiag_U, tempDiag_Sqrt));
-		tempOutV = tool.MatrixOpr.Matrix_Mult(tempOutV, tool.MatrixOpr.Matrix_Mult(tempDiag_V, tempDiag_Sqrt));
+		tempOutU = tool.MatrixOpr.Matrix_Mult(tempOutU,
+				tool.MatrixOpr.Matrix_Mult(tempDiag_U, tempDiag_Sqrt));
+		tempOutV = tool.MatrixOpr.Matrix_Mult(tempOutV,
+				tool.MatrixOpr.Matrix_Mult(tempDiag_V, tempDiag_Sqrt));
 		userSubspace = tempOutU;
 		itemSubspace = tempOutV;
 		// System.out.println("*************************Factorization
@@ -687,7 +747,8 @@ public class Orrs extends MF2DBoolean{
 	 * @see #EfficientMCL2()
 	 ***********************
 	 */
-	public double[] optimMCL2(double[][] paraMatrix, double[][] parasqrtW, double[] paraVector) {
+	public double[] optimMCL2(double[][] paraMatrix, double[][] parasqrtW,
+			double[] paraVector) {
 		double[][] tempX;
 		double[][] tempXX;
 		double[] resultOptimVec;
@@ -699,16 +760,19 @@ public class Orrs extends MF2DBoolean{
 		tempX = tool.MatrixOpr.Matrix_DotMult(parasqrtW, paraMatrix);
 
 		// Step 3. U = u*ones(1,n), size: paraVector.length
-		tempVec2Matrix = tool.MatrixOpr.Vector2Matrix(paraVector, paraMatrix[0].length);
+		tempVec2Matrix = tool.MatrixOpr.Vector2Matrix(paraVector,
+				paraMatrix[0].length);
 
 		// Step 4. U = W.* U; size:equal to W,
 		tempXX = tool.MatrixOpr.Matrix_DotMult(parasqrtW, tempVec2Matrix);
 
 		// Step 5. up = sum(TX.*U), size: the column number of TX
-		tempUp = tool.MatrixOpr.SumbyCol(tool.MatrixOpr.Matrix_DotMult(tempX, tempXX));
+		tempUp = tool.MatrixOpr.SumbyCol(tool.MatrixOpr.Matrix_DotMult(tempX,
+				tempXX));
 
 		// Step 6. down = sum (U.* U), size: the column number of U (or TX)
-		tempDown = tool.MatrixOpr.SumbyCol(tool.MatrixOpr.Matrix_DotMult(tempXX, tempXX));
+		tempDown = tool.MatrixOpr.SumbyCol(tool.MatrixOpr.Matrix_DotMult(
+				tempXX, tempXX));
 
 		// Step 7. v = up ./ down
 		resultOptimVec = tool.MatrixOpr.Vector_DotDiv(tempUp, tempDown);
@@ -771,16 +835,19 @@ public class Orrs extends MF2DBoolean{
 	 */
 	public void computePredictions() {
 		predictions = tool.MatrixOpr.Matrix_Mult(userSubspace, itemSubspace);
-		System.out.println("The size of paraMatrix_Multi:" + predictions.length + "," + predictions[0].length);
-		
-		predictions = tool.MatrixOpr.Matrix_DotMult(predictions, dataset.nonZeroIndexMatrix);
-		//predictions = tool.MatrixOpr.Add_MatrixandNumber(predictions, dataset.meanRatingOfTrain);
+		System.out.println("The size of paraMatrix_Multi:" + predictions.length
+				+ "," + predictions[0].length);
+
+		predictions = tool.MatrixOpr.Matrix_DotMult(predictions,
+				dataset.nonZeroIndexMatrix);
+		// predictions = tool.MatrixOpr.Add_MatrixandNumber(predictions,
+		// dataset.meanRatingOfTrain);
 		for (int i = 0; i < predictions.length; i++) {
 			for (int j = 0; j < predictions[0].length; j++) {
-				if(dataset.nonZeroIndexMatrix[i][j] == 1) {
-				predictions[i][j] += dataset.meanRatingOfTrain;
-				if (predictions[i][j] < 1) {
-					//if (predictions[i][j] < 1) {
+				if (dataset.nonZeroIndexMatrix[i][j] == 1) {
+					predictions[i][j] += dataset.meanRatingOfTrain;
+					if (predictions[i][j] < 1) {
+						// if (predictions[i][j] < 1) {
 						// System.out.println("Value exceeds bound: "
 						// + predictions[i][j]);
 						predictions[i][j] = 1;
@@ -788,27 +855,27 @@ public class Orrs extends MF2DBoolean{
 					if (predictions[i][j] > 5) {
 						predictions[i][j] = 5;
 					} // of if
-				}//Of if
+				}// Of if
 			} // of for j
 		} // of for i
-			
+
 		// SimpleTool.printMatrix(paraMatrix_Multi);
-//		for (int i = 0; i < predictions.length; i++) {
-//			for (int j = 0; j < predictions[0].length; j++) {
-//				// if (dataset.testMatrix[i][j] < 1e-6)
-//				// continue;
-//				if (predictions[i][j] > 0 && predictions[i][j] < 1) {
-//				//if (predictions[i][j] < 1) {
-//					// System.out.println("Value exceeds bound: "
-//					// + predictions[i][j]);
-//					predictions[i][j] = 1;
-//				} // of if
-//				if (predictions[i][j] > 5) {
-//					predictions[i][j] = 5;
-//				} // of if
-//			} // of for j
-//		} // of for i
-//		 SimpleTool.printMatrix(predictions);
+		// for (int i = 0; i < predictions.length; i++) {
+		// for (int j = 0; j < predictions[0].length; j++) {
+		// // if (dataset.testMatrix[i][j] < 1e-6)
+		// // continue;
+		// if (predictions[i][j] > 0 && predictions[i][j] < 1) {
+		// //if (predictions[i][j] < 1) {
+		// // System.out.println("Value exceeds bound: "
+		// // + predictions[i][j]);
+		// predictions[i][j] = 1;
+		// } // of if
+		// if (predictions[i][j] > 5) {
+		// predictions[i][j] = 5;
+		// } // of if
+		// } // of for j
+		// } // of for i
+		// SimpleTool.printMatrix(predictions);
 	}// Of computePredictions
 
 	/**
@@ -819,8 +886,8 @@ public class Orrs extends MF2DBoolean{
 	public void printErrors() {
 		double tempDistanceofTrain = 0;
 		double tempDistanceofTest = 0;
-//		double tempSubspace_U = 0;
-//		double tempSubspace_V = 0;
+		// double tempSubspace_U = 0;
+		// double tempSubspace_V = 0;
 		double trainMAE = 0;
 		double trainRMSE = 0;
 		double testMAE = 0;
@@ -837,7 +904,7 @@ public class Orrs extends MF2DBoolean{
 		double[][] tempTestSquare = new double[numUsers][numItems];
 		double[][] tempTrainAbs = new double[numUsers][numItems];
 		double[][] tempTestAbs = new double[numUsers][numItems];
-		//denoisingMatrix = new double[numUsers][numItems];
+		// denoisingMatrix = new double[numUsers][numItems];
 		// for (int i = 0; i < predictions.length; i++) {
 		// for (int j = 0; j < predictions[0].length; j++) {
 		// if (dataset.trainMatrix[i][j] > 1e-6) {
@@ -845,22 +912,30 @@ public class Orrs extends MF2DBoolean{
 		// }
 		// } // of for j
 		// } // of for i
-		tempMatrix_Multi_TrainNonzero = tool.MatrixOpr.Matrix_DotMult(predictions, dataset.nonZeroTrainIndexMatrix);
+		tempMatrix_Multi_TrainNonzero = tool.MatrixOpr.Matrix_DotMult(
+				predictions, dataset.nonZeroTrainIndexMatrix);
 
-		tempMatrix_Multi_TestNonzero = tool.MatrixOpr.Matrix_DotMult(predictions, dataset.nonZeroTestIndexMatrix);
+		tempMatrix_Multi_TestNonzero = tool.MatrixOpr.Matrix_DotMult(
+				predictions, dataset.nonZeroTestIndexMatrix);
 
-//		denoisingMatrix = tool.MatrixOpr.Matrix_Add(tempMatrix_Multi_TrainNonzero, tempMatrix_Multi_TestNonzero);
-//		System.out.println("denoisingMatrix:");
+		// denoisingMatrix =
+		// tool.MatrixOpr.Matrix_Add(tempMatrix_Multi_TrainNonzero,
+		// tempMatrix_Multi_TestNonzero);
+		// System.out.println("denoisingMatrix:");
 
 		// SimpleTool.printMatrix(denoisingMatrix);
 		// SimpleTool.printMatrix(tempMatrix_Multi_TestNonzero);
-		tempTest_SubValue = tool.MatrixOpr.Matrix_Sub(tempMatrix_Multi_TestNonzero, dataset.testMatrix);
-		tempTrain_SubValue = tool.MatrixOpr.Matrix_Sub(tempMatrix_Multi_TrainNonzero, dataset.trainMatrix);
+		tempTest_SubValue = tool.MatrixOpr.Matrix_Sub(
+				tempMatrix_Multi_TestNonzero, dataset.testMatrix);
+		tempTrain_SubValue = tool.MatrixOpr.Matrix_Sub(
+				tempMatrix_Multi_TrainNonzero, dataset.trainMatrix);
 		for (int i = 0; i < numUsers; i++) {
 			for (int j = 0; j < numItems; j++) {
 
-				trainMAE += Math.abs(tempMatrix_Multi_TrainNonzero[i][j] - dataset.trainMatrix[i][j]);
-				testMAE += Math.abs(tempMatrix_Multi_TestNonzero[i][j] - dataset.testMatrix[i][j]);
+				trainMAE += Math.abs(tempMatrix_Multi_TrainNonzero[i][j]
+						- dataset.trainMatrix[i][j]);
+				testMAE += Math.abs(tempMatrix_Multi_TestNonzero[i][j]
+						- dataset.testMatrix[i][j]);
 
 				tempDistanceofTrain += (tempMatrix_Multi_TrainNonzero[i][j] - dataset.trainMatrix[i][j])
 						* (tempMatrix_Multi_TrainNonzero[i][j] - dataset.trainMatrix[i][j]);
@@ -875,24 +950,31 @@ public class Orrs extends MF2DBoolean{
 		testMAE /= dataset.getTestingSize();
 		testRMSE = Math.sqrt(tempDistanceofTest / dataset.getTestingSize());
 		totalMAE /= (numTrainSize + dataset.getTestingSize());
-		totalRMSE = Math.sqrt((tempDistanceofTrain + tempDistanceofTest) / (numTrainSize + dataset.getTestingSize()));
+		totalRMSE = Math.sqrt((tempDistanceofTrain + tempDistanceofTest)
+				/ (numTrainSize + dataset.getTestingSize()));
 
-		System.out.printf("Train and Test MAE:%8.2f, %8.2f\r\n", trainMAE, testMAE);
-		System.out.printf("Train and Test RMSE:%8.2f, %8.2f\r\n", trainRMSE, testRMSE);
-		System.out.printf("The total MAE and RMSE:%8.2f, %8.2f\r\n", totalMAE, totalRMSE);
+		System.out.printf("Train and Test MAE:%8.2f, %8.2f\r\n", trainMAE,
+				testMAE);
+		System.out.printf("Train and Test RMSE:%8.2f, %8.2f\r\n", trainRMSE,
+				testRMSE);
+		System.out.printf("The total MAE and RMSE:%8.2f, %8.2f\r\n", totalMAE,
+				totalRMSE);
 		// tempTrainSquare = tool.MatrixOpr.Matrix_DotMult(tempTrain_SubValue,
 		// tempTrain_SubValue);
 		// tempTestSquare = tool.MatrixOpr.Matrix_DotMult(tempTest_SubValue,
 		// tempTest_SubValue);
 		tempDistanceofTrain = Math.sqrt(tempDistanceofTrain);
 		tempDistanceofTest = Math.sqrt(tempDistanceofTest);
-		System.out.printf("The euclidean metric between two matrices (Train and Test):%f, %f\r\n", tempDistanceofTrain,
-				tempDistanceofTest);
+		System.out
+				.printf("The euclidean metric between two matrices (Train and Test):%f, %f\r\n",
+						tempDistanceofTrain, tempDistanceofTest);
 
 		// System.out.println("Subspace U");
-		// printMatrix( tool.MatrixOpr.Matrix_Subspace(userSubspace, dataset.subU));
+		// printMatrix( tool.MatrixOpr.Matrix_Subspace(userSubspace,
+		// dataset.subU));
 		// System.out.println("Subspace V");
-		// printMatrix( tool.MatrixOpr.Matrix_Subspace(itemSubspace, dataset.subV));
+		// printMatrix( tool.MatrixOpr.Matrix_Subspace(itemSubspace,
+		// dataset.subV));
 		// System.out.printf("The distance between two matrices:%f\r\n",tempDistance);
 		// System.out.printf("Subspace U:%f , Subspace
 		// V:%f\r\n",tempSubspace_U,tempSubspace_V);
@@ -905,23 +987,27 @@ public class Orrs extends MF2DBoolean{
 		double tempTotalNum = numTrainSize + dataset.getTestingSize();
 		tempSum = tool.MatrixOpr.Matrix_Sum(paraMatrix);
 		tempAve = tempSum / tempTotalNum;
-		System.out.printf("The mean value of R' (denoisingMatrix) is %8.2f\r\n", tempAve);
+		System.out.printf(
+				"The mean value of R' (denoisingMatrix) is %8.2f\r\n", tempAve);
 		for (int i = 0; i < paraMatrix.length; i++) {
 			for (int j = 0; j < paraMatrix[0].length; j++) {
 				if (paraMatrix[i][j] > 1e-6) {
 					tempMAE += Math.abs(paraMatrix[i][j] - tempAve);
-					tempVariance += (paraMatrix[i][j] - tempAve) * (paraMatrix[i][j] - tempAve);
+					tempVariance += (paraMatrix[i][j] - tempAve)
+							* (paraMatrix[i][j] - tempAve);
 				} // Of if
 			} // Of for j
 		} // Of for i
 		tempMAE /= tempTotalNum;
 		tempVariance /= tempTotalNum;
-		System.out.printf("The variance  of R' (denoisingMatrix) is %8.2f\r\n", tempVariance);
-		System.out.printf("The MAE of R' (denoisingMatrix) between its mean value: %8.2f\r\n", tempMAE);
-	
+		System.out.printf("The variance  of R' (denoisingMatrix) is %8.2f\r\n",
+				tempVariance);
+		System.out
+				.printf("The MAE of R' (denoisingMatrix) between its mean value: %8.2f\r\n",
+						tempMAE);
+
 	}// Of observePredictions
 
-	
 	public void observeRR(double[] paraPred) {
 
 		double tempMAE = 0;
@@ -931,153 +1017,228 @@ public class Orrs extends MF2DBoolean{
 			tempAve += paraPred[i];
 		} // Of for i
 		tempAve /= paraPred.length;
-		System.out.printf("The mean value of R'' (after M-distance) is %8.2f\r\n", tempAve);
+		System.out.printf(
+				"The mean value of R'' (after M-distance) is %8.2f\r\n",
+				tempAve);
 		for (int i = 0; i < paraPred.length; i++) {
 			tempMAE += Math.abs(paraPred[i] - tempAve);
 			tempVariance += (paraPred[i] - tempAve) * (paraPred[i] - tempAve);
 		} // Of for i
 		tempMAE /= paraPred.length;
 		tempVariance /= paraPred.length;
-		System.out.printf("The variance of R'' (after M-distance) between its mean value: %8.2f\r\n", tempVariance);
-		System.out.printf("The MAE of R'' (after M-distance) between its mean value: %8.2f\r\n", tempMAE);
+		System.out
+				.printf("The variance of R'' (after M-distance) between its mean value: %8.2f\r\n",
+						tempVariance);
+		System.out
+				.printf("The MAE of R'' (after M-distance) between its mean value: %8.2f\r\n",
+						tempMAE);
 	}// Of observeRR
 
 	public void writeMatrix2Txt1(double[][] paraMatrix) throws IOException {
-		
+
 		int[] tempCnt = new int[8];
-		for(int i = 0; i < paraMatrix.length; i++) {
-			for(int j = 0; j < paraMatrix[0].length; j++) {
+		for (int i = 0; i < paraMatrix.length; i++) {
+			for (int j = 0; j < paraMatrix[0].length; j++) {
 				double tempValue = paraMatrix[i][j];
-				if(tempValue > 1e-6 && tempValue <=1) {
+				if (tempValue > 1e-6 && tempValue <= 1) {
 					tempCnt[0]++;
-				}else if(tempValue > 1 && tempValue <= 2) {
+				} else if (tempValue > 1 && tempValue <= 2) {
 					tempCnt[1]++;
-				}else if(tempValue > 2 && tempValue <= 2.5) {
+				} else if (tempValue > 2 && tempValue <= 2.5) {
 					tempCnt[2]++;
-				}else if(tempValue > 2.5 && tempValue <= 3) {
+				} else if (tempValue > 2.5 && tempValue <= 3) {
 					tempCnt[3]++;
-				}else if(tempValue > 3 && tempValue <= 3.5) {
+				} else if (tempValue > 3 && tempValue <= 3.5) {
 					tempCnt[4]++;
-				}else if(tempValue > 3.5 && tempValue <= 4) {
+				} else if (tempValue > 3.5 && tempValue <= 4) {
 					tempCnt[5]++;
-				}else if(tempValue > 4 && tempValue <= 4.5) {
+				} else if (tempValue > 4 && tempValue <= 4.5) {
 					tempCnt[6]++;
-				}else if(tempValue > 4.5 && tempValue <= 5) {
-					tempCnt[7]++;				
+				} else if (tempValue > 4.5 && tempValue <= 5) {
+					tempCnt[7]++;
 				}
-			}//Of for j
-		}//Of for i 
+			}// Of for j
+		}// Of for i
 		File file11 = new File("ratingsOfFactorizationResult.txt");
 		FileWriter out11 = new FileWriter(file11);
 		for (int i = 0; i < paraMatrix.length; i++) {
 			for (int j = 0; j < paraMatrix[0].length; j++) {
-				if(paraMatrix[i][j] > 1e-6) {
-				//out11.write(+paraMatrix[i][j] + ",");
-					out11.write(+ paraMatrix[i][j]+"\r\n");
-					//out11.write("\r\n");
-				}//Of if
-//				out11.write("\r\n");
+				if (paraMatrix[i][j] > 1e-6) {
+					// out11.write(+paraMatrix[i][j] + ",");
+					out11.write(+paraMatrix[i][j] + "\r\n");
+					// out11.write("\r\n");
+				}// Of if
+					// out11.write("\r\n");
 			} // Of for j
 		} // Of for i
 		out11.close();
-		
+
 		File file2 = new File("distributionOfGMMPrediction.txt");
 		FileWriter out2 = new FileWriter(file2);
 		for (int i = 0; i < tempCnt.length; i++) {
-					out2.write(+ tempCnt[i]+"\r\n");
+			out2.write(+tempCnt[i] + "\r\n");
 		} // Of for i
 		out2.close();
 	}// Of writeMatrix2Txt1
 
-	
-public void writeMatrix2Txt2(double[] paraArray) throws IOException {
-		
+	public void writeMatrix2Txt2(double[] paraArray) throws IOException {
+
 		int[] tempCnt = new int[8];
-		for(int i = 0; i < paraArray.length; i++) {
-//			for(int j =0; j < paraMatrix[0].length; j++) {
-				double tempValue = paraArray[i];
-//				if(tempValue > 1e-6 && tempValue <=1) {
-				if(tempValue <=1) {
-					tempCnt[0]++;
-				}else if(tempValue > 1 && tempValue <= 2) {
-					tempCnt[1]++;
-				}else if(tempValue > 2 && tempValue <= 2.5) {
-					tempCnt[2]++;
-				}else if(tempValue > 2.5 && tempValue <= 3) {
-					tempCnt[3]++;
-				}else if(tempValue > 3 && tempValue <= 3.5) {
-					tempCnt[4]++;
-				}else if(tempValue > 3.5 && tempValue <= 4) {
-					tempCnt[5]++;
-				}else if(tempValue > 4 && tempValue <= 4.5) {
-					tempCnt[6]++;
-				}else if(tempValue > 4.5 && tempValue <= 5) {
-					tempCnt[7]++;				
-				}//Of if
-//			}//Of for j
-		}//Of for i 
+		for (int i = 0; i < paraArray.length; i++) {
+			// for(int j =0; j < paraMatrix[0].length; j++) {
+			double tempValue = paraArray[i];
+			// if(tempValue > 1e-6 && tempValue <=1) {
+			if (tempValue <= 1) {
+				tempCnt[0]++;
+			} else if (tempValue > 1 && tempValue <= 2) {
+				tempCnt[1]++;
+			} else if (tempValue > 2 && tempValue <= 2.5) {
+				tempCnt[2]++;
+			} else if (tempValue > 2.5 && tempValue <= 3) {
+				tempCnt[3]++;
+			} else if (tempValue > 3 && tempValue <= 3.5) {
+				tempCnt[4]++;
+			} else if (tempValue > 3.5 && tempValue <= 4) {
+				tempCnt[5]++;
+			} else if (tempValue > 4 && tempValue <= 4.5) {
+				tempCnt[6]++;
+			} else if (tempValue > 4.5 && tempValue <= 5) {
+				tempCnt[7]++;
+			}// Of if
+				// }//Of for j
+		}// Of for i
 		File file11 = new File("ratingsOfMBR.txt");
 		FileWriter out11 = new FileWriter(file11);
-		for ( int i = 0; i < paraArray.length; i++) {
-//			for (int j = 0; j < paraMatrix[0].length; j++) {
-//				if(paraArray[i] > 1e-6) {
-				//out11.write(+paraMatrix[i][j] + ",");
-					out11.write(+ paraArray[i]+"\r\n");
-					//out11.write("\r\n");
-//				}//Of if
-//				out11.write("\r\n");
-//			} // Of for j
+		for (int i = 0; i < paraArray.length; i++) {
+			// for (int j = 0; j < paraMatrix[0].length; j++) {
+			// if(paraArray[i] > 1e-6) {
+			// out11.write(+paraMatrix[i][j] + ",");
+			out11.write(+paraArray[i] + "\r\n");
+			// out11.write("\r\n");
+			// }//Of if
+			// out11.write("\r\n");
+			// } // Of for j
 		} // Of for i
 		out11.close();
-		
+
 		File file2 = new File("distributionOfMBRPrediction.txt");
 		FileWriter out2 = new FileWriter(file2);
 		for (int i = 0; i < tempCnt.length; i++) {
-					out2.write(+ tempCnt[i]+"\r\n");
+			out2.write(+tempCnt[i] + "\r\n");
 		} // Of for i
 		out2.close();
 	}// Of writeMatrix2Txt2
 
 	/**
-	 * 
+	 ************************ 
+	 * The training testing scenario.
+	 ************************ 
+	 */
+	public static void testOutlierRemoval(String paraFilename,
+			int paraNumUsers, int paraNumItems, int paraNumRatings,
+			double paraRatingLowerBound, double paraRatingUpperBound,
+			double paraLikeThreshold, boolean paraCompress, int paraRounds) {
+		RatingSystem2DBoolean tempDataset = null;
+		try {
+			// Step 1. read the training and testing data
+			tempDataset = new RatingSystem2DBoolean(paraFilename, paraNumUsers,
+					paraNumItems, paraNumRatings, paraRatingLowerBound,
+					paraRatingUpperBound, paraLikeThreshold, paraCompress);
+		} catch (Exception e) {
+			e.printStackTrace();
+		} // of try
+
+		tempDataset.initializeTraining(0.8);
+
+		Orrs tempLearner = new Orrs(tempDataset, 3);
+		tempLearner.setParameters(10, 0.0001, 0.005, PQ_REGULAR, paraRounds);
+		// tempMF.setTestingSetRemainder(2);
+		// Step 2. Initialize the feature matrices U and V
+		tempLearner.initializeSubspaces(0.5);
+
+		// Step 3. update and predict
+		System.out.println("Begin Training ! ! !");
+
+		tempLearner.train();
+
+		double tempMAE = tempLearner.mae();
+		double tempRSME = tempLearner.rsme();
+		System.out
+				.println("Finally, MAE = " + tempMAE + ", RSME = " + tempRSME);
+
+		/*
+		 * String tempFilename = new String("dataset/u.dataset"); DataInfor
+		 * tempData = new DataInfor(tempFilename, 943, 1682);
+		 * tempData.splitTrainAndTest(0.0, 5);
+		 * tempData.computeTrainingSetAverageRating();
+		 * tempData.recomputeTrainset();// subtract the average of training set
+		 * tempData.computeTrainVector(); tempData.generateRandomSubMatrix(2);
+		 * tempData.setRandomNoiseDistribution(3); tempData.computeWeight();//
+		 * For the first time. Round 0
+		 * 
+		 * Orrs tempEm = new Orrs(tempData, 3); // tempEm.setModel();
+		 */
+
+		// Learn the noise using EM
+		tempLearner.iterationEM(100);
+		tempLearner.printNoiseDistribution();
+		// tempData.recoverTrainMatrix();
+		tempLearner.computePredictions();
+		tempLearner.printErrors();
+		System.out.println("llh");
+		SimpleTool.printDoubleArray(tempLearner.llh);
+		// tempLearner.writeMatrix2Txt1(predictions);
+		tempLearner.observeDenoisingMatrix(predictions);
+
+		/*
+		 * MBR tempMdist = new MBR(predictions, 943, 1682, 100000);
+		 * tempMdist.setRadius(0.3); tempMdist.leaveOneOutPrediction();
+		 * System.out .printf(
+		 * "The MAE and RMSE of M distance between R' and R'': %8.4f,%8.4f\r\n",
+		 * tempMdist.computeMAE(), tempMdist.computeRSME()); //
+		 * tempEm.observeDenoisingMatrix(predictions);
+		 * tempEm.observeRR(tempMdist.getPrediction());
+		 * tempEm.writeMatrix2Txt2(tempMdist.getPrediction());
+		 */
+	}// Of testOutlierRemoval
+
+	/**
+	 ******************* 
 	 * @param args
 	 * @throws Exception
+	 ******************* 
 	 */
-	public static void main(String[] args) throws Exception {
+	public static void main(String[] args) {
+		testOutlierRemoval("data/movielens943u1682m.txt", 943, 1682, 100000, 1,
+				5, 3.5, true, 500);
 
-		// Prepare dataset and preprocessing
-		String tempFilename = new String("dataset/u.dataset");
-		DataInfor tempData = new DataInfor(tempFilename, 943, 1682);
-		tempData.splitTrainAndTest(0.0, 5);
-		tempData.computeTrainingSetAverageRating();
-		tempData.recomputeTrainset();// subtract the average of training set
-		tempData.computeTrainVector();
-		tempData.generateRandomSubMatrix(2);
-		tempData.setRandomNoiseDistribution(3);
-		tempData.computeWeight();// For the first time. Round 0
-
-		Orrs tempEm = new Orrs(tempData);
-		// tempEm.setModel();
-
-		tempEm.iterationEM(100);
-		tempEm.printNoiseDistribution();
-		tempData.recoverTrainMatrix();
-		tempEm.computePredictions();
-		tempEm.printErrors();
-		System.out.println("llh");
-		SimpleTool.printDoubleArray(tempEm.llh);
-		tempEm.writeMatrix2Txt1(predictions);
-		tempEm.observeDenoisingMatrix(predictions);
-		
-		
-		
-		MBR tempMdist = new MBR(predictions, 943, 1682, 100000);
-		tempMdist.setRadius(0.3);
-		tempMdist.leaveOneOutPrediction();
-		System.out.printf("The MAE and RMSE of M distance between R' and R'': %8.4f,%8.4f\r\n", tempMdist.computeMAE(),
-				tempMdist.computeRSME());
-		//tempEm.observeDenoisingMatrix(predictions);
-		tempEm.observeRR(tempMdist.getPrediction());
-		tempEm.writeMatrix2Txt2(tempMdist.getPrediction());
+		/*
+		 * // Prepare dataset and preprocessing String tempFilename = new
+		 * String("dataset/u.dataset"); DataInfor tempData = new
+		 * DataInfor(tempFilename, 943, 1682); tempData.splitTrainAndTest(0.0,
+		 * 5); tempData.computeTrainingSetAverageRating();
+		 * tempData.recomputeTrainset();// subtract the average of training set
+		 * tempData.computeTrainVector(); tempData.generateRandomSubMatrix(2);
+		 * tempData.setRandomNoiseDistribution(3); tempData.computeWeight();//
+		 * For the first time. Round 0
+		 * 
+		 * Orrs tempEm = new Orrs(tempData, 3); // tempEm.setModel();
+		 * 
+		 * tempEm.iterationEM(100); tempEm.printNoiseDistribution();
+		 * tempData.recoverTrainMatrix(); tempEm.computePredictions();
+		 * tempEm.printErrors(); System.out.println("llh");
+		 * SimpleTool.printDoubleArray(tempEm.llh);
+		 * tempEm.writeMatrix2Txt1(predictions);
+		 * tempEm.observeDenoisingMatrix(predictions);
+		 * 
+		 * MBR tempMdist = new MBR(predictions, 943, 1682, 100000);
+		 * tempMdist.setRadius(0.3); tempMdist.leaveOneOutPrediction();
+		 * System.out .printf(
+		 * "The MAE and RMSE of M distance between R' and R'': %8.4f,%8.4f\r\n",
+		 * tempMdist.computeMAE(), tempMdist.computeRSME()); //
+		 * tempEm.observeDenoisingMatrix(predictions);
+		 * tempEm.observeRR(tempMdist.getPrediction());
+		 * tempEm.writeMatrix2Txt2(tempMdist.getPrediction());
+		 */
 	}// of main
 }// of class Orrs
