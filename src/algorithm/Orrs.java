@@ -91,7 +91,7 @@ public class Orrs extends MF2DBoolean {
 	public double tolerance;
 
 	/**
-	 * A parameter in EfficientMCL2
+	 * A parameter in efficientMCL2
 	 */
 	double[][] efficientPara1;
 
@@ -121,6 +121,17 @@ public class Orrs extends MF2DBoolean {
 	 */
 	public static double[][] denoisingMatrix;
 
+
+	/**
+	 * The user matrix U for maximizing likelihood.
+	 */
+	double[][] userSubspaceLikelihood;
+
+	/**
+	 * The item matrix V for maximizing likelihood..
+	 */
+	double[][] itemSubspaceLikelihood;
+
 	/**
 	 **********************
 	 * @param paraData
@@ -137,6 +148,7 @@ public class Orrs extends MF2DBoolean {
 	 ***********************
 	 */
 	public void initialize() {
+		//Step 1. Initialize user/item subspace
 		userSubspace = new double[numUsers][rank];
 		itemSubspace = new double[numItems][rank];
 
@@ -178,6 +190,23 @@ public class Orrs extends MF2DBoolean {
 		} // of for i
 
 		logRho = new double[numTrainSize][numNoise];// 640*3
+
+		//Step 2. Initialize user/item likelihood subspace
+		userSubspaceLikelihood = new double[numUsers][rank];
+		itemSubspaceLikelihood = new double[numItems][rank];
+		double tempAverageRating = dataset.getMeanRating();
+		double tempMu = Math.sqrt(tempAverageRating / rank);
+		// Step 1. Generate two gaussian sub-matrices
+		for (int j = 0; j < rank; j++) {
+			for (int i = 0; i < numUsers; i++) {
+				userSubspaceLikelihood[i][j] = Math.random() * 2 * tempMu - tempMu;
+			} // of for i
+
+			for (int i = 0; i < numItems; i++) {
+				itemSubspaceLikelihood[i][j] = Math.random() * 2 * tempMu - tempMu;
+			} // of for i
+		} // of for j
+		
 	}// of initialize
 
 	/**
@@ -318,30 +347,24 @@ public class Orrs extends MF2DBoolean {
 			tempIterations++;
 			// ******* M Step 1************
 			updateNoiseParameters();
-			// ******* M Step 1************
 
 			// ******* E Step 1 compute the noise distribution************
 			expectation();
 			// templlh1 = logLikelihood;
 			// llh[tempIterations] = templlh1;
 			llh[tempIterations] = logLikelihood;
-			// ******* E Step 1************
 
 			// ******* M Step 2************
 			// Compute subU and subV according to the noise distribution
-			maximizationW();
-
+			maximizeW();
 			// Prepare for the noise part
-			// computeNonZeroError();
 			computeTrainingError();
-			// ******* M Step 2************
 
 			// ******* E Step 2************
 			expectation();
 			// templlh2 = logLikelihood;
 			llh[tempIterations] = logLikelihood;
 
-			// ******* E Step 2************
 			if (llh[tempIterations] - llh[tempIterations - 1] < tolerance
 					* Math.abs(llh[tempIterations])) {
 				converged = true;
@@ -527,11 +550,11 @@ public class Orrs extends MF2DBoolean {
 
 	/**
 	 ***********************
-	 * Compute two subMatrices of factorization. Prepare/initialize for
-	 * EfficientMCL2()
+	 * Compute two subMatrices of factorization. M step 2.
+	 * Prepare/initialize for efficientMCL2()
 	 ***********************
 	 */
-	public void maximizationW() {
+	public void maximizeW() {
 		double[][] tempW = new double[numUsers][];
 		double[][] tempC = new double[numUsers][];
 		for (int i = 0; i < numUsers; i++) {
@@ -539,17 +562,10 @@ public class Orrs extends MF2DBoolean {
 			tempC[i] = new double[dataset.getUserNumRatings(i)];
 		}//Of for i
 		
-		// double[][] R;
-		// double[] tempMu;
-		// double[] tempSigma;
-
-		// R = noiseDistribution;
-		// tempMu = mu;
-		// tempSigma = sigma;
-
 		/*
-		 * Step 1. for j = 1:k W(IND) = W(IND) + R(:,j)/(2*Sigma(j)); C(IND) =
-		 * C(IND) + R(:,j)*mu(j)/(2*Sigma(j)); end
+		 * Step 1. for j = 1:k 
+		 * W(IND) = W(IND) + R(:,j)/(2*Sigma(j)); 
+		 * C(IND) = C(IND) + R(:,j)*mu(j)/(2*Sigma(j)); 
 		 */
 		for (int k = 0; k < noiseDistribution[0].length; k++) {
 			int tempIndex = 0;
@@ -580,16 +596,16 @@ public class Orrs extends MF2DBoolean {
 			} // Of for j
 		} // Of for i
 
-		EfficientMCL2();
-	}// of MaximazationW
+		efficientMCL2();
+	}// of maximizeW
 
 	/**
 	 ***********************
-	 * A main algorithm. The low rank matrices are updated decompIterTimes
+	 * The core code. The low rank matrices are updated decompIterTimes
 	 * times.
 	 ***********************
 	 */
-	public void EfficientMCL2() {
+	private void efficientMCL2() {
 		int[] randperm;// order randomly
 
 		double[][] tempMulti;
@@ -614,21 +630,16 @@ public class Orrs extends MF2DBoolean {
 		double[][] tempOutU_transp;
 		double[][] tempOutV_transp;
 
-		double[][] paraSubU;
-		double[][] paraSubV;
-		double[][] paraSubU_transp = new double[numUsers][rank];
-		double[][] paraSubV_transp = new double[numItems][rank];
-		// paraSubU: InU in EfficientMCL2, single direction, not return
+		double[][] paraSubU_transp = null;
+		double[][] paraSubV_transp = null;
+		// paraSubU: InU in efficientMCL2, single direction, not return
 		// System.out.println("**************dataset.subU************");
 		// printMatrix(dataset.subU);
 		// System.out.println("**************dataset.subV************");
 		// printMatrix(dataset.subV);
 
-		paraSubU = dataset.subU;
-		paraSubV = dataset.subV;
-
-		tempOutU = dataset.subU;
-		tempOutV = dataset.subV;
+		tempOutU = userSubspaceLikelihood;
+		tempOutV = itemSubspaceLikelihood;
 
 		for (int i = 0; i < decompIterTimes; i++) {
 			randperm = SimpleTool.generateRandomSequence(rank);
@@ -668,9 +679,9 @@ public class Orrs extends MF2DBoolean {
 				// System.out.printf("Iteration time: %d,tempColInd:%d\r\n",
 				// i,tempColInd);
 
-				paraSubU_transp = tool.MatrixOpr.Matrix_Transpose(paraSubU);// 4*40
+				paraSubU_transp = tool.MatrixOpr.Matrix_Transpose(userSubspaceLikelihood);// 4*40
 
-				paraSubV_transp = tool.MatrixOpr.Matrix_Transpose(paraSubV);// 4*20
+				paraSubV_transp = tool.MatrixOpr.Matrix_Transpose(itemSubspaceLikelihood);// 4*20
 
 				tempOutV_transp[tempColInd] = optimMCL2(tempRegul, sqrtW,
 						paraSubU_transp[tempColInd]);
@@ -687,19 +698,18 @@ public class Orrs extends MF2DBoolean {
 				tempOutV = tool.MatrixOpr.Matrix_Transpose(tempOutV_transp);
 			} // of for j
 
-			paraSubU = tool.MatrixOpr.Matrix_Transpose(paraSubU_transp);
-			paraSubV = tool.MatrixOpr.Matrix_Transpose(paraSubV_transp);
+			userSubspaceLikelihood = tool.MatrixOpr.Matrix_Transpose(paraSubU_transp);
+			itemSubspaceLikelihood = tool.MatrixOpr.Matrix_Transpose(paraSubV_transp);
 
 			// Step 3. Compute norm
-
-			tempNorm = tool.MatrixOpr.Matrix_Sub(paraSubU, tempOutU);
+			tempNorm = tool.MatrixOpr.Matrix_Sub(userSubspaceLikelihood, tempOutU);
 			tempNorm = tool.MatrixOpr.Matrix_DotMult(tempNorm, tempNorm);
 			double tempSum = tool.MatrixOpr.Matrix_Sum(tempNorm);
 			// System.out.printf("Norm is %f\r\n",Math.sqrt(tempSum) );
 			if (Math.sqrt(tempSum) < tolerance) {
 				break;
 			} else {
-				paraSubU = tempOutU;
+				userSubspaceLikelihood = tempOutU;
 			} // of if
 		} // of for i
 
@@ -728,15 +738,15 @@ public class Orrs extends MF2DBoolean {
 				tool.MatrixOpr.Matrix_Mult(tempDiag_U, tempDiag_Sqrt));
 		tempOutV = tool.MatrixOpr.Matrix_Mult(tempOutV,
 				tool.MatrixOpr.Matrix_Mult(tempDiag_V, tempDiag_Sqrt));
-		userSubspace = tempOutU;
-		itemSubspace = tempOutV;
+		userSubspaceLikelihood = tempOutU;
+		itemSubspaceLikelihood = tempOutV;
 		// System.out.println("*************************Factorization
 		// U*************************");
 		// SimpleTool.printMatrix(userSubspace);
 		// System.out.println("*************************Factorization
 		// V*************************");
 		// SimpleTool.printMatrix(itemSubspace);
-	}// of EfficientMCL2;
+	}// of efficientMCL2;
 
 	/**
 	 ***********************
@@ -744,7 +754,7 @@ public class Orrs extends MF2DBoolean {
 	 * 
 	 * @param paraMatrix
 	 * @return The column vector indicating
-	 * @see #EfficientMCL2()
+	 * @see #efficientMCL2()
 	 ***********************
 	 */
 	public double[] optimMCL2(double[][] paraMatrix, double[][] parasqrtW,
@@ -798,7 +808,6 @@ public class Orrs extends MF2DBoolean {
 	 ***********************
 	 * Compute which distribution the noise on every rating belongs to.
 	 ***********************
-	 */
 	public void printNoiseDistribution() {
 		int[] belongVector = new int[noiseDistribution.length];
 		double[] tempRowMax = new double[noiseDistribution.length];
@@ -827,12 +836,12 @@ public class Orrs extends MF2DBoolean {
 		System.out.println("Sigma");
 		SimpleTool.printDoubleArray(sigma);
 	}// of printNoiseDistribution
+	 */
 
 	/**
 	 ********************** 
 	 * Compute the predicted rating matrix.
 	 ********************** 
-	 */
 	public void computePredictions() {
 		predictions = tool.MatrixOpr.Matrix_Mult(userSubspace, itemSubspace);
 		System.out.println("The size of paraMatrix_Multi:" + predictions.length
@@ -877,12 +886,12 @@ public class Orrs extends MF2DBoolean {
 		// } // of for i
 		// SimpleTool.printMatrix(predictions);
 	}// Of computePredictions
+	 */
 
 	/**
 	 ********************** 
 	 * Compute the distance between the predicted matrix and the original one.
 	 ********************** 
-	 */
 	public void printErrors() {
 		double tempDistanceofTrain = 0;
 		double tempDistanceofTest = 0;
@@ -1128,6 +1137,7 @@ public class Orrs extends MF2DBoolean {
 		} // Of for i
 		out2.close();
 	}// Of writeMatrix2Txt2
+	 */
 
 	/**
 	 ************************ 
@@ -1181,14 +1191,14 @@ public class Orrs extends MF2DBoolean {
 
 		// Learn the noise using EM
 		tempLearner.iterationEM(100);
-		tempLearner.printNoiseDistribution();
+		//tempLearner.printNoiseDistribution();
 		// tempData.recoverTrainMatrix();
-		tempLearner.computePredictions();
-		tempLearner.printErrors();
+		//tempLearner.computePredictions();
+		//tempLearner.printErrors();
 		System.out.println("llh");
 		SimpleTool.printDoubleArray(tempLearner.llh);
 		// tempLearner.writeMatrix2Txt1(predictions);
-		tempLearner.observeDenoisingMatrix(predictions);
+		//tempLearner.observeDenoisingMatrix(predictions);
 
 		/*
 		 * MBR tempMdist = new MBR(predictions, 943, 1682, 100000);
